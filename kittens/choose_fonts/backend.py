@@ -150,7 +150,7 @@ def render_face_sample(font: Descriptor, opts: Options, dpi_x: float, dpi_y: flo
 
 def render_family_sample(
     opts: Options, family_key: FamilyKey, dpi_x: float, dpi_y: float, width: int, height: int, output_dir: str,
-    cache: dict[FaceKey, RenderedSampleTransmit]
+    cache: dict[FaceKey, RenderedSampleTransmit], sample_text: str = ''
 ) -> dict[str, RenderedSampleTransmit]:
     base_key: BaseKey = opts.font_family.created_from_string, width, height
     ans: dict[str, RenderedSampleTransmit] = {}
@@ -170,7 +170,7 @@ def render_family_sample(
             ans[x] = cached
         else:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.rgba', dir=output_dir) as tf:
-                bitmap, metadata = render_face_sample(desc, opts, dpi_x, dpi_y, width, height)
+                bitmap, metadata = render_face_sample(desc, opts, dpi_x, dpi_y, width, height, sample_text=sample_text)
                 tf.write(bitmap)
             metadata['path'] = tf.name
             cache[key] = ans[x] = metadata
@@ -217,7 +217,10 @@ def main() -> None:
             send_to_kitten(ans)
         elif action == 'render_family_samples':
             opts, family_key, dpi_x, dpi_y = opts_from_cmd(cmd)
-            send_to_kitten(render_family_sample(opts, family_key, dpi_x, dpi_y, cmd['width'], cmd['height'], cmd['output_dir'], cache))
+            send_to_kitten(render_family_sample(
+                opts, family_key, dpi_x, dpi_y, cmd['width'], cmd['height'], cmd['output_dir'], cache,
+                sample_text=cmd.get('sample_text') or ''
+            ))
         else:
             raise SystemExit(f'Unknown action: {action}')
 

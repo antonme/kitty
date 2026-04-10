@@ -58,7 +58,7 @@ func (self *faces) draw_screen() (err error) {
 			self.handler.set_worker_error(kitty_font_backend.query("render_family_samples", map[string]any{
 				"text_style": self.handler.text_style, "font_family": s.font_family,
 				"bold_font": s.bold_font, "italic_font": s.italic_font, "bold_italic_font": s.bold_italic_font,
-				"width": key.width, "height": key.height, "output_dir": self.handler.temp_dir,
+				"width": key.width, "height": key.height, "output_dir": self.handler.temp_dir, "sample_text": self.handler.opts.Sample_text,
 			}, &r))
 			self.preview_cache_mutex.Lock()
 			defer self.preview_cache_mutex.Unlock()

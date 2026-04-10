@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -30,7 +31,16 @@ type kitty_font_backend_type struct {
 }
 
 func (k *kitty_font_backend_type) start() (err error) {
-	exe := utils.KittyExe()
+	exe := ""
+	if current_exe, e := os.Executable(); e == nil {
+		candidate := filepath.Join(filepath.Dir(current_exe), "kitty")
+		if s, e := os.Stat(candidate); e == nil && !s.IsDir() {
+			exe = candidate
+		}
+	}
+	if exe == "" {
+		exe = utils.KittyExe()
+	}
 	if exe == "" {
 		exe = utils.Which("kitty")
 	}
