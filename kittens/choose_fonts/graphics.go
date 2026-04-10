@@ -91,6 +91,7 @@ func (g *graphics_manager) on_response(gc *graphics.GraphicsCommand) (err error)
 			break
 		}
 	}
+	g.lp.WakeupMainThread()
 	return
 }
 
