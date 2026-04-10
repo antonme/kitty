@@ -66,7 +66,7 @@ class TextStyle(TypedDict):
     dpi_y: float
     foreground: str
     background: str
-    ansi_colors: list[str]
+    ansi_colors: NotRequired[list[str]]
 
 
 OptNames = Literal['font_family', 'bold_font', 'italic_font', 'bold_italic_font']

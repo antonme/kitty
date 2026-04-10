@@ -202,33 +202,6 @@ class Background(Query):
             return opts.background.as_sharp
         return (w.screen.color_profile.default_bg or get_options().background).as_sharp
 
-
-def current_color_value(opts: Options, window_id: int, name: str) -> str:
-    from kitty.fast_data_types import get_boss
-    boss = get_boss()
-    w = boss.window_id_map.get(window_id)
-    if w is None:
-        return getattr(opts, name).as_sharp
-    val = w.screen.color_profile.basic_colors()[name]
-    return f'#{val:06x}'
-
-
-def add_color_query(which: int) -> None:
-    name = f'color{which}'
-    def get_result(opts: Options, window_id: int, os_window_id: int) -> str:
-        return current_color_value(opts, window_id, name)
-    cls = type(f'ColorQuery{which}', (Query,), {
-        'name': name,
-        'help_text': f'The current ANSI color {which} as a 24-bit # color code',
-        'get_result': staticmethod(get_result),
-    })
-    query(cls)
-
-
-for i in range(16):
-    add_color_query(i)
-
-
 @query
 class BackgroundOpacity(Query):
     name: str = 'background_opacity'

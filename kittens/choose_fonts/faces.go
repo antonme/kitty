@@ -3,7 +3,6 @@ package choose_fonts
 import (
 	"fmt"
 	"math"
-	"strings"
 	"sync"
 
 	"github.com/kovidgoyal/kitty/tools/tui/loop"
@@ -47,9 +46,6 @@ func (self *faces) draw_screen() (err error) {
 
 	num_lines_per_font := ((int(sz.HeightCells) - y - 1) / 4) - 2
 	num_lines := max(1, num_lines_per_font)
-	if strings.Contains(self.handler.opts.Sample_text, "\x1b") && !self.handler.text_style.has_all_ansi_colors() {
-		return
-	}
 	key := faces_preview_key{settings: self.settings, width: int(sz.WidthCells * sz.CellWidth), height: int(sz.CellHeight) * num_lines}
 	self.preview_cache_mutex.Lock()
 	defer self.preview_cache_mutex.Unlock()
