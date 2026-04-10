@@ -70,6 +70,7 @@ func main(opts *Options) (rc int, err error) {
 type Options struct {
 	Reload_in        string
 	Config_file_name string
+	Sample_text      string
 }
 
 func EntryPoint(root *cli.Command) {
@@ -104,6 +105,12 @@ with respect to the kitty config directory. By default the kitty config
 file, kitty.conf is edited. This is most useful if you add include
 fonts.conf to your kitty.conf and then have the kitten operate only on
 fonts.conf, allowing kitty.conf to remain unchanged.`,
+	})
+	ans.Add(cli.OptionSpec{
+		Name: "--sample-text",
+		Dest: "Sample_text",
+		Type: "str",
+		Help: "Text to use for font previews. Defaults to the built-in ASCII sample text.",
 	})
 
 	clone := root.AddClone(ans.Group, ans)

@@ -155,7 +155,7 @@ func (self *FontList) draw_preview(x, y int, sz loop.ScreenSize) (err error) {
 			var r map[string]RenderedSampleTransmit
 			self.handler.set_worker_error(kitty_font_backend.query("render_family_samples", map[string]any{
 				"text_style": self.handler.text_style, "font_family": key.family, "width": key.width, "height": key.height,
-				"output_dir": self.handler.temp_dir,
+				"output_dir": self.handler.temp_dir, "sample_text": self.handler.opts.Sample_text,
 			}, &r))
 			self.preview_cache_mutex.Lock()
 			defer self.preview_cache_mutex.Unlock()
