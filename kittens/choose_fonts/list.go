@@ -15,8 +15,8 @@ import (
 var _ = fmt.Print
 
 type preview_cache_key struct {
-	family        string
-	width, height int
+	family, sample_text string
+	width, height       int
 }
 
 type preview_cache_value struct {
@@ -140,7 +140,8 @@ func (self *FontList) draw_preview(x, y int, sz loop.ScreenSize) (err error) {
 	height_cells -= 2
 	self.handler.lp.MoveCursorTo(x+1, y+1)
 	key := preview_cache_key{
-		family: self.family_list.CurrentFamily(), width: int(sz.CellWidth) * width_cells, height: int(sz.CellHeight) * height_cells,
+		family: self.family_list.CurrentFamily(), sample_text: self.handler.opts.Sample_text,
+		width: int(sz.CellWidth) * width_cells, height: int(sz.CellHeight) * height_cells,
 	}
 	if key.family == "" {
 		return

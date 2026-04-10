@@ -88,7 +88,7 @@ def opts_from_cmd(cmd: dict[str, Any]) -> tuple[Options, FamilyKey, float, float
     return opts, tuple(family_key), ts['dpi_x'], ts['dpi_y']
 
 
-BaseKey = tuple[str, int, int]
+BaseKey = tuple[str, int, int, str]
 FaceKey = tuple[str, BaseKey]
 RenderedSample = tuple[bytes, dict[str, Any]]
 RenderedSampleTransmit = dict[str, Any]
@@ -152,7 +152,7 @@ def render_family_sample(
     opts: Options, family_key: FamilyKey, dpi_x: float, dpi_y: float, width: int, height: int, output_dir: str,
     cache: dict[FaceKey, RenderedSampleTransmit], sample_text: str = ''
 ) -> dict[str, RenderedSampleTransmit]:
-    base_key: BaseKey = opts.font_family.created_from_string, width, height
+    base_key: BaseKey = opts.font_family.created_from_string, width, height, sample_text
     ans: dict[str, RenderedSampleTransmit] = {}
     font_files = get_font_files(opts)
     for x in family_key:

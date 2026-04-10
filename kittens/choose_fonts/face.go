@@ -268,7 +268,7 @@ func (self *face_panel) draw_screen() (err error) {
 
 	num_lines_per_font := (int(sz.HeightCells) - y - 1) - 2
 	num_lines := max(1, num_lines_per_font)
-	key := faces_preview_key{settings: self.settings, width: int(sz.WidthCells * sz.CellWidth), height: int(sz.CellHeight) * num_lines}
+	key := faces_preview_key{settings: self.settings, sample_text: self.handler.opts.Sample_text, width: int(sz.WidthCells * sz.CellWidth), height: int(sz.CellHeight) * num_lines}
 	self.current_preview_key = key
 	self.preview_cache_mutex.Lock()
 	defer self.preview_cache_mutex.Unlock()
