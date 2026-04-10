@@ -25,7 +25,7 @@ in the form of the *choose-fonts* kitten. Simply run::
 
 and follow the on screen prompts.
 If you want the previews to use custom text, pass ``--sample-text="your text"``
-when launching the kitten.
+when launching the kitten. Escape sequences such as ``\n`` are expanded.
 
 First, choose the family you want, the list of families can be easily filtered by
 typing a few letters from the family name you are looking for. The family

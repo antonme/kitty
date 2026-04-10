@@ -7,6 +7,7 @@ import (
 	"github.com/kovidgoyal/kitty/tools/cli"
 	"github.com/kovidgoyal/kitty/tools/tty"
 	"github.com/kovidgoyal/kitty/tools/tui/loop"
+	"github.com/kovidgoyal/kitty/tools/utils/shlex"
 )
 
 var _ = fmt.Print
@@ -82,6 +83,9 @@ func EntryPoint(root *cli.Command) {
 			if err = cmd.GetOptionValues(&opts); err != nil {
 				return 1, err
 			}
+			if opts.Sample_text != "" {
+				opts.Sample_text = shlex.ExpandANSICEscapes(opts.Sample_text)
+			}
 			return main(&opts)
 		},
 	})
@@ -110,7 +114,8 @@ fonts.conf, allowing kitty.conf to remain unchanged.`,
 		Name: "--sample-text",
 		Dest: "Sample_text",
 		Type: "str",
-		Help: "Text to use for font previews. Defaults to the built-in ASCII sample text.",
+		Help: `Text to use for font previews. Defaults to the built-in ASCII sample text.
+Escape sequences such as \n and \t are expanded.`,
 	})
 
 	clone := root.AddClone(ans.Group, ans)
