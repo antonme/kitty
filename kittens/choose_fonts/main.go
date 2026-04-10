@@ -115,7 +115,7 @@ fonts.conf, allowing kitty.conf to remain unchanged.`,
 		Dest: "Sample_text",
 		Type: "str",
 		Help: `Text to use for font previews. Defaults to the built-in ASCII sample text.
-Escape sequences such as \n and \t are expanded.`,
+Escape sequences such as \n and \t are expanded. ANSI SGR foreground colors are supported.`,
 	})
 
 	clone := root.AddClone(ans.Group, ans)

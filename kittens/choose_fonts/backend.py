@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import string
 import sys
 import tempfile
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional, TypedDict
 from kitty.cli import create_default_opts
 from kitty.conf.utils import to_color
 from kitty.constants import kitten_exe
+from kitty.fast_data_types import wcswidth
 from kitty.fonts import Descriptor
 from kitty.fonts.common import (
     face_from_descriptor,
@@ -64,6 +66,7 @@ class TextStyle(TypedDict):
     dpi_y: float
     foreground: str
     background: str
+    ansi_colors: list[str]
 
 
 OptNames = Literal['font_family', 'bold_font', 'italic_font', 'bold_italic_font']
@@ -93,6 +96,12 @@ FaceKey = tuple[str, BaseKey]
 RenderedSample = tuple[bytes, dict[str, Any]]
 RenderedSampleTransmit = dict[str, Any]
 SAMPLE_TEXT = string.ascii_lowercase + ' ' + string.digits + ' ' + string.ascii_uppercase + ' ' + string.punctuation
+SGR_PATTERN = re.compile(r'\x1b\[([0-9:;]*)m')
+FALLBACK_ANSI_COLORS = (
+    0x000000, 0xcd0000, 0x00cd00, 0xcdcd00, 0x0000ee, 0xcd00cd, 0x00cdcd, 0xe5e5e5,
+    0x7f7f7f, 0xff0000, 0x00ff00, 0xffff00, 0x5c5cff, 0xff00ff, 0x00ffff, 0xffffff,
+)
+TAB_STOP = 4
 
 
 class FD(TypedDict):
@@ -124,7 +133,182 @@ def get_features(features: dict[str, Optional['FeatureData']]) -> dict[str, FD]:
     return ans
 
 
-def render_face_sample(font: Descriptor, opts: Options, dpi_x: float, dpi_y: float, width: int, height: int, sample_text: str = '') -> RenderedSample:
+def ansi_palette_from_text_style(ts: TextStyle, default_fg: int) -> list[int]:
+    ans = list(FALLBACK_ANSI_COLORS)
+    colors = ts.get('ansi_colors') or []
+    for i in range(min(len(colors), 16)):
+        if colors[i]:
+            c = to_color(colors[i])
+            if c is not None:
+                ans[i] = c.rgb
+    return ans
+
+
+def color_from_256_index(idx: int, palette: list[int]) -> int:
+    if 0 <= idx < 16:
+        return palette[idx]
+    if idx < 232:
+        idx -= 16
+        steps = (0, 95, 135, 175, 215, 255)
+        r, idx = divmod(idx, 36)
+        g, b = divmod(idx, 6)
+        return (steps[r] << 16) | (steps[g] << 8) | steps[b]
+    gray = 8 + (idx - 232) * 10
+    return (gray << 16) | (gray << 8) | gray
+
+
+def apply_sgr_to_fg(params: str, current_fg: int, default_fg: int, palette: list[int]) -> int:
+    raw = params.replace(':', ';')
+    items: list[int] = []
+    for item in raw.split(';'):
+        if item == '':
+            items.append(0)
+        else:
+            try:
+                items.append(int(item))
+            except ValueError:
+                pass
+    if not items:
+        items = [0]
+    i = 0
+    while i < len(items):
+        p = items[i]
+        if p == 0 or p == 39:
+            current_fg = default_fg
+        elif 30 <= p <= 37:
+            current_fg = palette[p - 30]
+        elif 90 <= p <= 97:
+            current_fg = palette[p - 90 + 8]
+        elif p == 38 and i + 1 < len(items):
+            mode = items[i + 1]
+            if mode == 5 and i + 2 < len(items):
+                current_fg = color_from_256_index(items[i + 2], palette)
+                i += 2
+            elif mode == 2 and i + 4 < len(items):
+                r, g, b = items[i + 2:i + 5]
+                current_fg = (r << 16) | (g << 8) | b
+                i += 4
+        i += 1
+    return current_fg
+
+
+def line_cells(text: str) -> int:
+    ans = wcswidth(text)
+    return ans if ans > 0 else 0
+
+
+def render_rich_sample_text(face: Any, width: int, height: int, default_fg: int, sample_text: str, text_style: TextStyle) -> tuple[bytes, int, int]:
+    _, cell_width, cell_height = face.render_sample_text('M', width, height, default_fg)
+    if not cell_width or not cell_height or width <= 0 or height <= 0:
+        return b'', cell_width, cell_height
+    max_cols = max(1, width // cell_width)
+    max_lines = max(1, height // cell_height)
+    palette = ansi_palette_from_text_style(text_style, default_fg)
+    normalized = sample_text.replace('\r\n', '\n').replace('\r', '\n')
+    lines: list[list[tuple[str, int]]] = [[]]
+    line_idx = 0
+    col = 0
+    current_fg = default_fg
+    current_span_fg = default_fg
+    current_span: list[str] = []
+    stopped = False
+
+    def flush_span() -> None:
+        nonlocal current_span
+        if not current_span:
+            return
+        text = ''.join(current_span)
+        current_span = []
+        line = lines[line_idx]
+        if line and line[-1][1] == current_span_fg:
+            prev_text, prev_fg = line[-1]
+            line[-1] = (prev_text + text, prev_fg)
+        else:
+            line.append((text, current_span_fg))
+
+    def new_line() -> bool:
+        nonlocal line_idx, col, current_span_fg
+        flush_span()
+        if line_idx + 1 >= max_lines:
+            return False
+        lines.append([])
+        line_idx += 1
+        col = 0
+        current_span_fg = current_fg
+        return True
+
+    pos = 0
+    while pos < len(normalized) and not stopped:
+        m = SGR_PATTERN.search(normalized, pos)
+        segment = normalized[pos:] if m is None else normalized[pos:m.start()]
+        for ch in segment:
+            if ch == '\n':
+                if not new_line():
+                    stopped = True
+                    break
+                continue
+            if ch == '\t':
+                spaces = TAB_STOP - (col % TAB_STOP)
+                for _ in range(spaces):
+                    if col + 1 > max_cols and not new_line():
+                        stopped = True
+                        break
+                    if col >= max_cols:
+                        continue
+                    if current_span_fg != current_fg:
+                        flush_span()
+                        current_span_fg = current_fg
+                    current_span.append(' ')
+                    col += 1
+                if stopped:
+                    break
+                continue
+            ch_width = wcswidth(ch)
+            if ch_width < 0:
+                ch_width = 1
+            if col + ch_width > max_cols and col > 0 and not new_line():
+                stopped = True
+                break
+            if current_span_fg != current_fg:
+                flush_span()
+                current_span_fg = current_fg
+            current_span.append(ch)
+            col += max(ch_width, 0)
+        if stopped or m is None:
+            break
+        flush_span()
+        current_fg = apply_sgr_to_fg(m.group(1), current_fg, default_fg, palette)
+        current_span_fg = current_fg
+        pos = m.end()
+    flush_span()
+
+    canvas_height = min(height, max(1, len(lines)) * cell_height)
+    canvas = bytearray(width * canvas_height * 4)
+    for y, line in enumerate(lines):
+        x = 0
+        y_offset = y * cell_height
+        if y_offset >= canvas_height:
+            break
+        for text, fg in line:
+            span_cells = line_cells(text)
+            if span_cells <= 0:
+                continue
+            span_width = min(width - x, span_cells * cell_width)
+            if span_width <= 0:
+                break
+            bitmap, _, _ = face.render_sample_text(text, span_width, cell_height, fg)
+            bitmap_height = len(bitmap) // (4 * span_width) if span_width else 0
+            for row in range(min(bitmap_height, canvas_height - y_offset)):
+                src_start = row * span_width * 4
+                src_end = src_start + span_width * 4
+                dest_start = ((y_offset + row) * width + x) * 4
+                dest_end = dest_start + span_width * 4
+                canvas[dest_start:dest_end] = bitmap[src_start:src_end]
+            x += span_width
+    return bytes(canvas), cell_width, cell_height
+
+
+def render_face_sample(font: Descriptor, opts: Options, dpi_x: float, dpi_y: float, width: int, height: int, sample_text: str = '', text_style: Optional[TextStyle] = None) -> RenderedSample:
     face = face_from_descriptor(font, opts.font_size, dpi_x, dpi_y)
     face.set_size(opts.font_size, dpi_x, dpi_y)
     metadata = {
@@ -141,7 +325,11 @@ def render_face_sample(font: Descriptor, opts: Options, dpi_x: float, dpi_y: flo
         if ns:
             metadata['variable_named_style'] = ns
         metadata['variable_axis_map'] = get_axis_map(face)
-    bitmap, cell_width, cell_height = face.render_sample_text(sample_text or SAMPLE_TEXT, width, height, opts.foreground.rgb)
+    text = sample_text or SAMPLE_TEXT
+    if text_style is not None and any(ch in text for ch in ('\x1b', '\n', '\r', '\t')):
+        bitmap, cell_width, cell_height = render_rich_sample_text(face, width, height, opts.foreground.rgb, text, text_style)
+    else:
+        bitmap, cell_width, cell_height = face.render_sample_text(text, width, height, opts.foreground.rgb)
     metadata['cell_width'] = cell_width
     metadata['cell_height'] = cell_height
     metadata['canvas_height'] = len(bitmap) // (4 *width)
@@ -150,7 +338,7 @@ def render_face_sample(font: Descriptor, opts: Options, dpi_x: float, dpi_y: flo
 
 def render_family_sample(
     opts: Options, family_key: FamilyKey, dpi_x: float, dpi_y: float, width: int, height: int, output_dir: str,
-    cache: dict[FaceKey, RenderedSampleTransmit], sample_text: str = ''
+    cache: dict[FaceKey, RenderedSampleTransmit], sample_text: str = '', text_style: Optional[TextStyle] = None
 ) -> dict[str, RenderedSampleTransmit]:
     base_key: BaseKey = opts.font_family.created_from_string, width, height
     ans: dict[str, RenderedSampleTransmit] = {}
@@ -170,7 +358,7 @@ def render_family_sample(
             ans[x] = cached
         else:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.rgba', dir=output_dir) as tf:
-                bitmap, metadata = render_face_sample(desc, opts, dpi_x, dpi_y, width, height, sample_text=sample_text)
+                bitmap, metadata = render_face_sample(desc, opts, dpi_x, dpi_y, width, height, sample_text=sample_text, text_style=text_style)
                 tf.write(bitmap)
             metadata['path'] = tf.name
             cache[key] = ans[x] = metadata
@@ -219,7 +407,7 @@ def main() -> None:
             opts, family_key, dpi_x, dpi_y = opts_from_cmd(cmd)
             send_to_kitten(render_family_sample(
                 opts, family_key, dpi_x, dpi_y, cmd['width'], cmd['height'], cmd['output_dir'], cache,
-                sample_text=cmd.get('sample_text') or ''
+                sample_text=cmd.get('sample_text') or '', text_style=cmd['text_style']
             ))
         else:
             raise SystemExit(f'Unknown action: {action}')

@@ -129,6 +129,9 @@ func (self *FontList) draw_family_summary(start_x int, sz loop.ScreenSize) (err 
 }
 
 func (self *FontList) draw_preview(x, y int, sz loop.ScreenSize) (err error) {
+	if strings.Contains(self.handler.opts.Sample_text, "\x1b") && !self.handler.text_style.has_all_ansi_colors() {
+		return
+	}
 	width_cells, height_cells := int(sz.WidthCells)-x, int(sz.HeightCells)-y
 	if height_cells < 3 {
 		return

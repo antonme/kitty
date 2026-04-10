@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/kovidgoyal/kitty/tools/tui"
@@ -23,11 +24,21 @@ const (
 )
 
 type TextStyle struct {
-	Font_sz    float64 `json:"font_size"`
-	Dpi_x      float64 `json:"dpi_x"`
-	Dpi_y      float64 `json:"dpi_y"`
-	Foreground string  `json:"foreground"`
-	Background string  `json:"background"`
+	Font_sz    float64    `json:"font_size"`
+	Dpi_x      float64    `json:"dpi_x"`
+	Dpi_y      float64    `json:"dpi_y"`
+	Foreground string     `json:"foreground"`
+	Background string     `json:"background"`
+	AnsiColors [16]string `json:"ansi_colors"`
+}
+
+func (ts TextStyle) has_all_ansi_colors() bool {
+	for _, c := range ts.AnsiColors {
+		if c == "" {
+			return false
+		}
+	}
+	return true
 }
 
 type pane interface {
@@ -78,7 +89,11 @@ func (h *handler) get_worker_error() error {
 func (h *handler) initialize() (err error) {
 	h.lp.SetCursorVisible(false)
 	h.lp.OnQueryResponse = h.on_query_response
-	h.lp.QueryTerminal("font_size", "dpi_x", "dpi_y", "foreground", "background")
+	h.lp.QueryTerminal(
+		"font_size", "dpi_x", "dpi_y", "foreground", "background",
+		"color0", "color1", "color2", "color3", "color4", "color5", "color6", "color7",
+		"color8", "color9", "color10", "color11", "color12", "color13", "color14", "color15",
+	)
 	h.panes = []pane{&h.listing, &h.faces, &h.face_pane, &h.if_pane, &h.final_pane}
 	for _, pane := range h.panes {
 		if err = pane.initialize(h); err != nil {
@@ -142,6 +157,15 @@ func (h *handler) on_query_response(key, val string, valid bool) error {
 	case "background":
 		h.text_style.Background = val
 		return h.draw_screen()
+	default:
+		if tail, found := strings.CutPrefix(key, "color"); found {
+			if idx, err := strconv.Atoi(tail); err == nil && idx >= 0 && idx < len(h.text_style.AnsiColors) {
+				h.text_style.AnsiColors[idx] = val
+				if h.current_pane != nil && strings.Contains(h.opts.Sample_text, "\x1b") && h.text_style.Background != "" && h.text_style.has_all_ansi_colors() {
+					return h.draw_screen()
+				}
+			}
+		}
 	}
 	return nil
 }
